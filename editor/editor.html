@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agentic PPT — Canvas Editor</title>
+<!-- interact.js for drag + resize -->
+<script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
+<!-- html2canvas for PNG export -->
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<!-- jsPDF for PDF export -->
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;700;900&family=Caveat:wght@400;700&family=Permanent+Marker&display=swap');
+
+  :root {
+    --ink: #1a1a1a;
+    --paper: #f5f0e8;
+    --grey: #888;
+    --light-grey: #d0ccc4;
+    --accent: #4ECDC4;
+    --ui-bg: #1a1a2e;
+    --ui-panel: #16213e;
+    --ui-border: #0f3460;
+    --ui-text: #e0e0e0;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    display: flex;
+    height: 100vh;
+    font-family: 'Noto Sans SC', sans-serif;
+    background: var(--ui-bg);
+    color: var(--ui-text);
+    overflow: hidden;
+  }
+
+  /* ─── Left Toolbar ─────────────────────────────────── */
+  .toolbar {
+    width: 200px;
+    flex-shrink: 0;
+    background: var(--ui-panel);
+    border-right: 1px solid var(--ui-border);
+    display: flex;
+    flex-direction: column;
+    padding: 16px 12px;
+    gap: 8px;
+    overflow-y: auto;
+  }
+
+  .toolbar-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--accent);
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--ui-border);
+    margin-bottom: 4px;
+  }
+
+  .toolbar-section {
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--grey);
+    margin-top: 12px;
+    margin-bottom: 4px;
+  }
+
+  .btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(78, 205, 196, 0.08);
+    border: 1px solid rgba(78, 205, 196, 0.2);
+    color: var(--ui-text);
+    padding: 9px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: 'Noto Sans SC', sans-serif;
+    transition: all .15s;
+    text-align: left;
+  }
+  .btn:hover {
+    background: rgba(78, 205, 196, 0.18);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--ink);
+    font-weight: 700;
+  }
+  .btn.primary:hover { background: #3bbab1; }
+  .btn.danger {
+    background: rgba(255, 100, 100, 0.08);
+    border-color: rgba(255, 100, 100, 0.2);
+  }
+  .btn.danger:hover { background: rgba(255, 100, 100, 0.2); border-color: #ff6464; }
+
+  .btn .icon { font-size: 16px; }
+
+  /* Slide nav dots */
+  #slide-nav { display: flex; flex-direction: column; gap: 6px; }
+  .slide-dot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 12px;
+    border: 1px solid transparent;
+    transition: all .15s;
+  }
+  .slide-dot:hover { background: rgba(255,255,255,0.05); }
+  .slide-dot.active { background: rgba(78, 205, 196, 0.15); border-color: rgba(78, 205, 196, 0.3); color: var(--accent); }
+  .slide-dot-num {
+    background: var(--ui-border);
+    color: var(--ui-text);
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-size: 11px;
+    font-weight: 700;
+    min-width: 24px;
+    text-align: center;
+  }
+
+  /* ─── Canvas Area ───────────────────────────────────── */
+  .canvas-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #111120;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Stage label */
+  .stage-label {
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: rgba(255,255,255,0.3);
+    letter-spacing: 1px;
+    pointer-events: none;
+  }
+
+  /* The scaled slide preview */
+  #slide-stage {
+    position: relative;
+    transform-origin: center center;
+  }
+
+  /* Editable mode overlay on elements */
+  .editable-element {
+    position: relative;
+    cursor: move;
+    user-select: none;
+  }
+  .editable-element.selected > .select-ring {
+    display: block;
+  }
+  .select-ring {
+    display: none;
+    position: absolute;
+    inset: -4px;
+    border: 2px solid var(--accent);
+    border-radius: 3px;
+    pointer-events: none;
+    z-index: 9999;
+  }
+  /* Resize handle */
+  .resize-handle {
+    display: none;
+    position: absolute;
+    bottom: -6px;
+    right: -6px;
+    width: 12px;
+    height: 12px;
+    background: var(--accent);
+    border-radius: 2px;
+    cursor: se-resize;
+    z-index: 10000;
+  }
+  .editable-element.selected .resize-handle { display: block; }
+
+  /* Edit mode tooltip */
+  .edit-hint {
+    position: absolute;
+    top: -24px;
+    left: 0;
+    background: var(--accent);
+    color: var(--ink);
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 3px;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 10001;
+    display: none;
+  }
+  .editable-element.selected .edit-hint { display: block; }
+
+  /* ─── Right Properties Panel ────────────────────────── */
+  .props-panel {
+    width: 220px;
+    flex-shrink: 0;
+    background: var(--ui-panel);
+    border-left: 1px solid var(--ui-border);
+    padding: 16px 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .props-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--accent);
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--ui-border);
+  }
+
+  .prop-group label {
+    display: block;
+    font-size: 11px;
+    color: var(--grey);
+    margin-bottom: 4px;
+    letter-spacing: 0.5px;
+  }
+  .prop-group input[type="text"],
+  .prop-group input[type="number"],
+  .prop-group input[type="color"],
+  .prop-group select {
+    width: 100%;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--ui-border);
+    color: var(--ui-text);
+    padding: 6px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+  .prop-group input[type="color"] { height: 32px; padding: 2px; cursor: pointer; }
+
+  .prop-row { display: flex; gap: 8px; }
+  .prop-row .prop-group { flex: 1; }
+
+  .props-empty {
+    color: var(--grey);
+    font-size: 12px;
+    text-align: center;
+    margin-top: 20px;
+    line-height: 1.6;
+  }
+
+  /* ─── Toast ─────────────────────────────────────────── */
+  #toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(60px);
+    background: var(--accent);
+    color: var(--ink);
+    font-weight: 700;
+    padding: 10px 24px;
+    border-radius: 24px;
+    font-size: 13px;
+    transition: transform .3s ease;
+    z-index: 99999;
+    pointer-events: none;
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* ─── Load overlay ──────────────────────────────────── */
+  #load-overlay {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    color: rgba(255,255,255,0.6);
+    font-size: 14px;
+  }
+  #load-overlay .drop-zone {
+    border: 2px dashed rgba(78, 205, 196, 0.4);
+    border-radius: 12px;
+    padding: 40px 60px;
+    text-align: center;
+    cursor: pointer;
+    transition: all .2s;
+  }
+  #load-overlay .drop-zone:hover {
+    border-color: var(--accent);
+    background: rgba(78, 205, 196, 0.04);
+  }
+  #load-overlay .drop-zone h2 { font-size: 18px; color: #fff; margin-bottom: 8px; }
+  #load-overlay .drop-zone p { font-size: 13px; color: rgba(255,255,255,0.4); }
+  #load-overlay input[type="file"] { display: none; }
+
+  /* ─── Progress bar ──────────────────────────────────── */
+  #progress-bar {
+    position: fixed; top: 0; left: 0; right: 0; height: 3px;
+    background: var(--accent);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform .3s;
+    z-index: 99999;
+  }
+
+  /* Keyboard shortcut tooltip */
+  .shortcut-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .shortcut-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: rgba(255,255,255,0.4);
+  }
+  .shortcut-item kbd {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-family: monospace;
+    font-size: 11px;
+    color: var(--ui-text);
+  }
+
+  /* Badge for undo/redo stack count */
+  .badge {
+    background: rgba(78, 205, 196, 0.2);
+    color: var(--accent);
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 8px;
+    margin-left: auto;
+    min-width: 16px;
+    text-align: center;
+  }
+  .btn:disabled .badge { opacity: 0.4; }
+</style>
+</head>
+<body>
+
+<div id="progress-bar"></div>
+<div id="toast"></div>
+
+<!-- ═══ LEFT TOOLBAR ═══════════════════════════════════ -->
+<div class="toolbar">
+  <div class="toolbar-title">🎨 Agentic PPT</div>
+
+  <div class="toolbar-section">File</div>
+  <button class="btn" onclick="document.getElementById('file-input').click()">
+    <span class="icon">📂</span> Load HTML
+  </button>
+  <input type="file" id="file-input" accept=".html" onchange="loadFile(event)" style="display:none">
+  <button class="btn primary" onclick="saveHTML()" id="btn-save" disabled>
+    <span class="icon">💾</span> Save HTML
+  </button>
+  <button class="btn" onclick="exportPNG()" id="btn-png" disabled>
+    <span class="icon">🖼️</span> Export PNG
+  </button>
+  <button class="btn" onclick="exportPDF()" id="btn-pdf" disabled>
+    <span class="icon">📄</span> Export PDF
+  </button>
+
+  <div class="toolbar-section">Edit</div>
+  <button class="btn" onclick="undo()" id="btn-undo" disabled>
+    <span class="icon">↩</span> Undo <span class="badge" id="undo-count">0</span>
+  </button>
+  <button class="btn" onclick="redo()" id="btn-redo" disabled>
+    <span class="icon">↪</span> Redo <span class="badge" id="redo-count">0</span>
+  </button>
+
+  <div class="toolbar-section">Slides</div>
+  <div id="slide-nav"></div>
+
+  <div class="toolbar-section">Shortcuts</div>
+  <div class="shortcut-list">
+    <div class="shortcut-item"><span>Select</span><kbd>Click</kbd></div>
+    <div class="shortcut-item"><span>Edit text</span><kbd>Dbl-click</kbd></div>
+    <div class="shortcut-item"><span>Deselect</span><kbd>Esc</kbd></div>
+    <div class="shortcut-item"><span>Delete</span><kbd>Del</kbd></div>
+    <div class="shortcut-item"><span>Prev/Next slide</span><kbd>← →</kbd></div>
+    <div class="shortcut-item"><span>Undo</span><kbd>⌘Z</kbd></div>
+    <div class="shortcut-item"><span>Redo</span><kbd>⌘⇧Z</kbd></div>
+  </div>
+
+  <div class="toolbar-section" style="margin-top:auto">Mode</div>
+  <button class="btn danger" onclick="toggleEditMode()" id="btn-edit-mode" disabled>
+    <span class="icon">✏️</span> <span id="edit-mode-label">Enable Editing</span>
+  </button>
+</div>
+
+<!-- ═══ CANVAS AREA ════════════════════════════════════ -->
+<div class="canvas-area" id="canvas-area">
+  <div class="stage-label" id="stage-label">— Load an HTML presentation to begin —</div>
+
+  <!-- Load overlay shown before any file is loaded -->
+  <div id="load-overlay">
+    <div class="drop-zone" onclick="document.getElementById('file-input').click()" id="drop-zone">
+      <h2>🎨 Open Presentation</h2>
+      <p>Click to choose an HTML file<br>or drag & drop here</p>
+    </div>
+  </div>
+
+  <!-- Slide content injected here -->
+  <div id="slide-stage" style="display:none"></div>
+</div>
+
+<!-- ═══ PROPERTIES PANEL ═══════════════════════════════ -->
+<div class="props-panel">
+  <div class="props-title">Properties</div>
+  <div id="props-content">
+    <p class="props-empty">Select an element<br>to edit its properties</p>
+  </div>
+</div>
+
+<script>
+// ─── State ──────────────────────────────────────────────
+let slides = [];
+let currentSlide = 0;
+let editMode = false;
+let selectedEl = null;
+let originalHTML = '';    // the full loaded HTML string
+let slideHTMLs = [];      // individual slide innerHTML strings
+
+// ─── Undo/Redo (Snapshot Pattern) ────────────────────────
+const MAX_UNDO = 30;
+let undoStack = [];  // { slideIndex, html }
+let redoStack = [];
+let _snapshotBefore = null;  // temp: pre-action snapshot
+
+function getCleanHTML() {
+  // Get slide-stage innerHTML with editor chrome removed
+  const stage = document.getElementById('slide-stage');
+  const clone = stage.cloneNode(true);
+  clone.querySelectorAll('.select-ring, .edit-hint, .resize-handle').forEach(e => e.remove());
+  clone.querySelectorAll('[contenteditable]').forEach(e => e.removeAttribute('contenteditable'));
+  clone.querySelectorAll('.editable-element').forEach(e => {
+    e.classList.remove('editable-element', 'selected');
+    delete e.dataset.wrapped;
+  });
+  return clone.innerHTML;
+}
+
+function saveSnapshotBefore() {
+  _snapshotBefore = { slideIndex: currentSlide, html: getCleanHTML() };
+}
+
+function pushSnapshot() {
+  if (!_snapshotBefore) return;
+  const after = getCleanHTML();
+  if (_snapshotBefore.html === after) { _snapshotBefore = null; return; } // no change
+  undoStack.push({ slideIndex: _snapshotBefore.slideIndex, html: _snapshotBefore.html });
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  redoStack = []; // new action clears redo
+  _snapshotBefore = null;
+  updateUndoUI();
+}
+
+function undo() {
+  if (undoStack.length === 0) return;
+  // Save current state to redo
+  redoStack.push({ slideIndex: currentSlide, html: getCleanHTML() });
+  const snap = undoStack.pop();
+  applySnapshot(snap);
+  updateUndoUI();
+}
+
+function redo() {
+  if (redoStack.length === 0) return;
+  // Save current state to undo
+  undoStack.push({ slideIndex: currentSlide, html: getCleanHTML() });
+  const snap = redoStack.pop();
+  applySnapshot(snap);
+  updateUndoUI();
+}
+
+function applySnapshot(snap) {
+  // Switch to target slide if needed
+  if (snap.slideIndex !== currentSlide) {
+    showSlide(snap.slideIndex);
+  }
+  const stage = document.getElementById('slide-stage');
+  stage.innerHTML = snap.html;
+  // Re-show slide element properly
+  const slideEl = stage.firstElementChild || stage;
+  slideEl.style.position = 'static';
+  slideEl.style.opacity = '1';
+  slideEl.style.visibility = 'visible';
+  slideEl.style.width = '1280px';
+  slideEl.style.height = '720px';
+  slideEl.style.overflow = 'hidden';
+  // Re-wrap if edit mode
+  if (editMode) wrapElements(stage);
+  clearSelection();
+}
+
+function updateUndoUI() {
+  document.getElementById('btn-undo').disabled = undoStack.length === 0;
+  document.getElementById('btn-redo').disabled = redoStack.length === 0;
+  document.getElementById('undo-count').textContent = undoStack.length;
+  document.getElementById('redo-count').textContent = redoStack.length;
+}
+
+// ─── File Loading ────────────────────────────────────────
+function loadFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    originalHTML = e.target.result;
+    parseAndRender(originalHTML, file.name);
+  };
+  reader.readAsText(file);
+}
+
+// Drag-and-drop support
+const dropZone = document.getElementById('drop-zone');
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (file && file.name.endsWith('.html')) {
+    const reader = new FileReader();
+    reader.onload = ev => { originalHTML = ev.target.result; parseAndRender(originalHTML, file.name); };
+    reader.readAsText(file);
+  }
+});
+
+function parseAndRender(html, filename) {
+  // Parse the HTML string in a temp div
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+
+  // Extract <style> tags and inject into our page
+  const styles = doc.querySelectorAll('style');
+  document.getElementById('injected-styles')?.remove();
+  const styleBlock = document.createElement('style');
+  styleBlock.id = 'injected-styles';
+  styles.forEach(s => { styleBlock.textContent += s.textContent; });
+  document.head.appendChild(styleBlock);
+
+  // Find slides (.slide elements)
+  const slideEls = doc.querySelectorAll('.slide');
+  if (slideEls.length === 0) {
+    showToast('⚠️ No .slide elements found! Is this an Agentic PPT file?');
+    return;
+  }
+
+  slides = Array.from(slideEls);
+  slideHTMLs = slides.map(s => s.outerHTML);
+  currentSlide = 0;
+
+  // Hide overlay, show stage
+  document.getElementById('load-overlay').style.display = 'none';
+  const stage = document.getElementById('slide-stage');
+  stage.style.display = 'block';
+
+  // Enable buttons
+  ['btn-save', 'btn-png', 'btn-pdf', 'btn-edit-mode'].forEach(id => {
+    document.getElementById(id).disabled = false;
+  });
+
+  // Reset undo/redo for new file
+  undoStack = [];
+  redoStack = [];
+  updateUndoUI();
+
+  // Build slide nav
+  buildSlideNav(slides.length, filename);
+
+  // Set label
+  document.getElementById('stage-label').textContent = filename;
+
+  // Scale stage to fit
+  scaleStage();
+
+  // Render first slide
+  showSlide(0);
+}
+
+function scaleStage() {
+  const area = document.getElementById('canvas-area');
+  const stage = document.getElementById('slide-stage');
+  const W = 1280, H = 720;
+  stage.style.width = W + 'px';
+  stage.style.height = H + 'px';
+
+  const areaW = area.clientWidth - 80;
+  const areaH = area.clientHeight - 60;
+  const scale = Math.min(areaW / W, areaH / H);
+  stage.style.transform = `scale(${scale})`;
+}
+window.addEventListener('resize', scaleStage);
+
+// ─── Slide Navigation ────────────────────────────────────
+function buildSlideNav(count, filename) {
+  const nav = document.getElementById('slide-nav');
+  nav.innerHTML = '';
+  for (let i = 0; i < count; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'slide-dot' + (i === 0 ? ' active' : '');
+    dot.innerHTML = `<span class="slide-dot-num">${i+1}</span> Slide ${i+1}`;
+    dot.onclick = () => showSlide(i);
+    nav.appendChild(dot);
+  }
+}
+
+function showSlide(n) {
+  currentSlide = Math.max(0, Math.min(n, slides.length - 1));
+  const stage = document.getElementById('slide-stage');
+
+  // Rebuild current slide content inside stage
+  stage.innerHTML = slideHTMLs[currentSlide];
+
+  // Style the stage div like a slide display
+  const slideEl = stage.firstElementChild || stage;
+  slideEl.style.position = 'static';
+  slideEl.style.opacity = '1';
+  slideEl.style.visibility = 'visible';
+  slideEl.style.width = '1280px';
+  slideEl.style.height = '720px';
+  slideEl.style.overflow = 'hidden';
+
+  // Update nav dots
+  document.querySelectorAll('.slide-dot').forEach((d, i) => {
+    d.classList.toggle('active', i === currentSlide);
+  });
+
+  // Re-apply edit mode wrappers if active
+  if (editMode) wrapElements(stage);
+
+  clearSelection();
+}
+
+// ─── Edit Mode ───────────────────────────────────────────
+function toggleEditMode() {
+  editMode = !editMode;
+  const label = document.getElementById('edit-mode-label');
+  const btn = document.getElementById('btn-edit-mode');
+  const stage = document.getElementById('slide-stage');
+
+  if (editMode) {
+    label.textContent = 'Disable Editing';
+    btn.style.background = 'rgba(255, 107, 53, 0.15)';
+    btn.style.borderColor = '#FF6B35';
+    wrapElements(stage);
+    showToast('✏️ Edit mode on — drag to move, double-click to edit text');
+  } else {
+    label.textContent = 'Enable Editing';
+    btn.style.background = '';
+    btn.style.borderColor = '';
+    unwrapElements(stage);
+    clearSelection();
+  }
+}
+
+function wrapElements(stage) {
+  // Wrap all direct and nested visible elements to make them draggable
+  const targets = stage.querySelectorAll(
+    'h1, h2, h3, p, .bubble, .tool-card, .insight-card, .combo-card, .emphasis-box, .subtitle, img, table, .decision-tree, .tools-grid, .insight-grid, .combo-grid'
+  );
+
+  targets.forEach(el => {
+    if (el.dataset.wrapped) return;
+    el.dataset.wrapped = 'true';
+    el.classList.add('editable-element');
+
+    // Add visual chrome
+    const ring = document.createElement('div');
+    ring.className = 'select-ring';
+    el.appendChild(ring);
+
+    const hint = document.createElement('div');
+    hint.className = 'edit-hint';
+    hint.textContent = 'Drag · Dbl-click to edit';
+    el.appendChild(hint);
+
+    const handle = document.createElement('div');
+    handle.className = 'resize-handle';
+    el.appendChild(handle);
+
+    // Click to select
+    el.addEventListener('mousedown', onElementMousedown, true);
+
+    // Double-click to edit text
+    el.addEventListener('dblclick', onElementDblClick, true);
+  });
+
+  // Set up interact.js drag + resize
+  interact('.editable-element')
+    .draggable({
+      listeners: {
+        start(e) {
+          e.target.classList.add('selected'); selectedEl = e.target; updateProps(e.target);
+          saveSnapshotBefore(); // ← snapshot before drag
+        },
+        move(e) {
+          const x = (parseFloat(e.target.dataset.x) || 0) + e.dx;
+          const y = (parseFloat(e.target.dataset.y) || 0) + e.dy;
+          e.target.style.transform = `translate(${x}px, ${y}px)`;
+          e.target.dataset.x = x;
+          e.target.dataset.y = y;
+          // Update props panel
+          if (document.getElementById('prop-x')) {
+            document.getElementById('prop-x').value = Math.round(x);
+            document.getElementById('prop-y').value = Math.round(y);
+          }
+        },
+        end(e) {
+          pushSnapshot(); // ← snapshot after drag
+        }
+      },
+      modifiers: [
+        interact.modifiers.snap({ targets: [interact.snappers.grid({ x: 8, y: 8 })], relativePoints: [{ x: 0, y: 0 }] })
+      ]
+    })
+    .resizable({
+      edges: { bottom: '.resize-handle', right: '.resize-handle', bottomRight: '.resize-handle' },
+      listeners: {
+        start(e) {
+          saveSnapshotBefore(); // ← snapshot before resize
+        },
+        move(e) {
+          const { width, height } = e.rect;
+          e.target.style.width = width + 'px';
+          e.target.style.height = height + 'px';
+          if (document.getElementById('prop-w')) {
+            document.getElementById('prop-w').value = Math.round(width);
+            document.getElementById('prop-h').value = Math.round(height);
+          }
+        },
+        end(e) {
+          pushSnapshot(); // ← snapshot after resize
+        }
+      }
+    });
+}
+
+function unwrapElements(stage) {
+  stage.querySelectorAll('.editable-element').forEach(el => {
+    el.classList.remove('editable-element', 'selected');
+    el.querySelector('.select-ring')?.remove();
+    el.querySelector('.edit-hint')?.remove();
+    el.querySelector('.resize-handle')?.remove();
+    el.removeEventListener('mousedown', onElementMousedown, true);
+    el.removeEventListener('dblclick', onElementDblClick, true);
+    delete el.dataset.wrapped;
+  });
+  interact('.editable-element').unset();
+}
+
+function onElementMousedown(e) {
+  e.stopPropagation();
+  if (e.target.classList.contains('resize-handle')) return;
+  selectElement(this);
+}
+
+function onElementDblClick(e) {
+  e.stopPropagation();
+  // Snapshot before editing
+  saveSnapshotBefore();
+  // Make text nodes editable
+  this.setAttribute('contenteditable', 'true');
+  this.focus();
+  this.style.cursor = 'text';
+  const hint = this.querySelector('.edit-hint');
+  if (hint) hint.textContent = 'Editing — click outside to finish';
+  showToast('✏️ Editing text — click outside when done');
+
+  // Stop dragging when editing text
+  interact(this).draggable(false);
+
+  this.addEventListener('blur', function onBlur() {
+    this.removeAttribute('contenteditable');
+    this.style.cursor = 'move';
+    const h = this.querySelector('.edit-hint');
+    if (h) h.textContent = 'Drag · Dbl-click to edit';
+    interact(this).draggable(true);
+    pushSnapshot(); // ← snapshot after text edit
+    this.removeEventListener('blur', onBlur);
+  }, { once: true });
+}
+
+// Click on canvas background = deselect
+document.getElementById('slide-stage').addEventListener('click', e => {
+  if (!e.target.closest('.editable-element')) clearSelection();
+});
+
+function selectElement(el) {
+  if (selectedEl) selectedEl.classList.remove('selected');
+  selectedEl = el;
+  el.classList.add('selected');
+  updateProps(el);
+}
+
+function clearSelection() {
+  if (selectedEl) selectedEl.classList.remove('selected');
+  selectedEl = null;
+  document.getElementById('props-content').innerHTML = '<p class="props-empty">Select an element<br>to edit its properties</p>';
+}
+
+// ─── Properties Panel ────────────────────────────────────
+function updateProps(el) {
+  const cs = getComputedStyle(el);
+  const rect = el.getBoundingClientRect();
+  const x = parseFloat(el.dataset.x) || 0;
+  const y = parseFloat(el.dataset.y) || 0;
+
+  document.getElementById('props-content').innerHTML = `
+    <div class="prop-group">
+      <label>Element</label>
+      <input type="text" value="${el.tagName.toLowerCase()}.${el.className.replace(/\s+/g,' ').trim().split(' ').slice(0,2).join('.')}" readonly style="opacity:.5">
+    </div>
+    <div class="prop-row">
+      <div class="prop-group">
+        <label>X offset</label>
+        <input type="number" id="prop-x" value="${Math.round(x)}" onchange="moveEl('x', this.value)">
+      </div>
+      <div class="prop-group">
+        <label>Y offset</label>
+        <input type="number" id="prop-y" value="${Math.round(y)}" onchange="moveEl('y', this.value)">
+      </div>
+    </div>
+    <div class="prop-row">
+      <div class="prop-group">
+        <label>Width</label>
+        <input type="number" id="prop-w" value="${Math.round(rect.width)}" onchange="resizeEl('w', this.value)">
+      </div>
+      <div class="prop-group">
+        <label>Height</label>
+        <input type="number" id="prop-h" value="${Math.round(rect.height)}" onchange="resizeEl('h', this.value)">
+      </div>
+    </div>
+    <div class="prop-group">
+      <label>Font size (px)</label>
+      <input type="number" value="${parseInt(cs.fontSize)}" onchange="selectedEl.style.fontSize = this.value + 'px'">
+    </div>
+    <div class="prop-group">
+      <label>Color</label>
+      <input type="color" value="${rgbToHex(cs.color)}" onchange="selectedEl.style.color = this.value">
+    </div>
+    <div class="prop-group">
+      <label>Background</label>
+      <input type="color" value="${rgbToHex(cs.backgroundColor)}" onchange="selectedEl.style.backgroundColor = this.value">
+    </div>
+    <div class="prop-group">
+      <label>Opacity</label>
+      <input type="number" value="${parseFloat(cs.opacity) || 1}" step="0.1" min="0" max="1" onchange="selectedEl.style.opacity = this.value">
+    </div>
+    <div class="prop-group" style="margin-top:8px">
+      <button class="btn danger" style="width:100%" onclick="deleteSelected()">
+        <span class="icon">🗑️</span> Delete element
+      </button>
+    </div>
+  `;
+}
+
+function moveEl(axis, val) {
+  if (!selectedEl) return;
+  const x = axis === 'x' ? parseFloat(val) : (parseFloat(selectedEl.dataset.x) || 0);
+  const y = axis === 'y' ? parseFloat(val) : (parseFloat(selectedEl.dataset.y) || 0);
+  selectedEl.style.transform = `translate(${x}px, ${y}px)`;
+  selectedEl.dataset.x = x;
+  selectedEl.dataset.y = y;
+}
+
+function resizeEl(axis, val) {
+  if (!selectedEl) return;
+  if (axis === 'w') selectedEl.style.width = val + 'px';
+  if (axis === 'h') selectedEl.style.height = val + 'px';
+}
+
+function deleteSelected() {
+  if (selectedEl) {
+    saveSnapshotBefore(); // ← snapshot before delete
+    selectedEl.remove();
+    pushSnapshot(); // ← snapshot after delete
+    selectedEl = null;
+    document.getElementById('props-content').innerHTML = '<p class="props-empty">Element deleted</p>';
+    showToast('🗑️ Element deleted');
+  }
+}
+
+// ─── RGB → Hex helper ────────────────────────────────────
+function rgbToHex(rgb) {
+  if (!rgb || rgb === 'transparent') return '#f5f0e8';
+  const m = rgb.match(/\d+/g);
+  if (!m || m.length < 3) return '#f5f0e8';
+  return '#' + m.slice(0,3).map(n => parseInt(n).toString(16).padStart(2,'0')).join('');
+}
+
+// ─── Save HTML ───────────────────────────────────────────
+function saveHTML() {
+  // Snapshot current slide's modified HTML
+  const stage = document.getElementById('slide-stage');
+
+  // Remove editor chrome (rings, handles, hints) before saving
+  const clone = stage.cloneNode(true);
+  clone.querySelectorAll('.select-ring, .edit-hint, .resize-handle').forEach(e => e.remove());
+  clone.querySelectorAll('[contenteditable]').forEach(e => e.removeAttribute('contenteditable'));
+  clone.querySelectorAll('[data-wrapped]').forEach(e => { delete e.dataset.wrapped; });
+
+  // Update the stored slide HTML
+  slideHTMLs[currentSlide] = clone.innerHTML;
+
+  // Reconstruct full HTML by replacing slides in the original
+  // Simple approach: build a new deck from all slide HTMLs
+  const fullHTML = buildOutputHTML();
+  const blob = new Blob([fullHTML], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'agentic-ppt-edited.html';
+  a.click();
+  showToast('💾 Saved! HTML downloaded');
+}
+
+function buildOutputHTML() {
+  // Parse original to get all <style> and the deck structure
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(originalHTML, 'text/html');
+
+  // Replace each .slide's content with the (possibly modified) slideHTMLs
+  const deckSlides = doc.querySelectorAll('.slide');
+  deckSlides.forEach((sl, i) => {
+    if (slideHTMLs[i]) {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = slideHTMLs[i];
+      const newSlide = tmp.querySelector('.slide') || tmp.firstElementChild;
+      if (newSlide) sl.outerHTML = newSlide.outerHTML;
+    }
+  });
+
+  return '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+}
+
+// ─── Export PNG ──────────────────────────────────────────
+async function exportPNG() {
+  const stage = document.getElementById('slide-stage');
+  showToast('📸 Capturing screenshot...');
+
+  // Temporarily remove editor chrome
+  const rings = stage.querySelectorAll('.select-ring, .edit-hint, .resize-handle');
+  rings.forEach(r => r.style.display = 'none');
+
+  try {
+    const canvas = await html2canvas(stage, {
+      width: 1280,
+      height: 720,
+      scale: 2,          // 2x for retina quality
+      useCORS: true,
+      logging: false,
+      backgroundColor: null
+    });
+
+    const link = document.createElement('a');
+    link.download = `slide-${currentSlide + 1}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    showToast('🖼️ Exported slide ' + (currentSlide + 1) + ' as PNG!');
+  } catch (err) {
+    showToast('⚠️ Export failed: ' + err.message);
+    console.error(err);
+  } finally {
+    rings.forEach(r => r.style.display = '');
+  }
+}
+
+// ─── Export PDF ──────────────────────────────────────────
+async function exportPDF() {
+  if (slides.length === 0) return;
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: [1280, 720] });
+  const stage = document.getElementById('slide-stage');
+  const bar = document.getElementById('progress-bar');
+  const savedSlide = currentSlide;
+  const wasEditMode = editMode;
+
+  // Temporarily disable edit mode for clean capture
+  if (wasEditMode) {
+    editMode = false;
+    unwrapElements(stage);
+  }
+
+  showToast('📄 Generating PDF...');
+
+  for (let i = 0; i < slides.length; i++) {
+    // Update progress bar
+    bar.style.transform = `scaleX(${(i + 1) / slides.length})`;
+
+    // Show slide
+    showSlide(i);
+
+    // Wait a tick for render
+    await new Promise(r => setTimeout(r, 100));
+
+    try {
+      const canvas = await html2canvas(stage, {
+        width: 1280,
+        height: 720,
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: null
+      });
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);
+      if (i > 0) pdf.addPage([1280, 720], 'landscape');
+      pdf.addImage(imgData, 'JPEG', 0, 0, 1280, 720);
+    } catch (err) {
+      console.error('PDF capture error on slide ' + (i + 1), err);
+    }
+  }
+
+  pdf.save('agentic-ppt.pdf');
+
+  // Restore state
+  bar.style.transform = 'scaleX(0)';
+  showSlide(savedSlide);
+  if (wasEditMode) {
+    editMode = true;
+    wrapElements(stage);
+  }
+  showToast('📄 PDF exported! (' + slides.length + ' slides)');
+}
+
+// ─── Toast ───────────────────────────────────────────────
+let toastTimer;
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 2800);
+}
+
+// ─── Keyboard shortcuts ───────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.hasAttribute('contenteditable')) return;
+  // Undo / Redo
+  if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+    e.preventDefault();
+    if (e.shiftKey) redo();
+    else undo();
+    return;
+  }
+  if (e.key === 'Escape') clearSelection();
+  if ((e.key === 'Delete' || e.key === 'Backspace') && selectedEl && !e.target.closest('input')) {
+    e.preventDefault();
+    deleteSelected();
+  }
+  if (e.key === 'ArrowRight' && !editMode) showSlide(currentSlide + 1);
+  if (e.key === 'ArrowLeft' && !editMode) showSlide(currentSlide - 1);
+});
+</script>
+</body>
+</html>

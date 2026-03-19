@@ -1,0 +1,42 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Large media files
+*.mp4
+*.mov
+*.m4a
+*.zip
+
+# API Keys — never commit
+API-Keys.md
+**/API-Keys.md
+**/.env*
+
+# Node / Remotion
+node_modules/
+out/
+.remotion/
+
+# Editor
+.vscode/
+*.swp
+
+# Reference repos (cloned for study, not part of this project)
+refs/
+
+# Research / private notes
+research/
+*-chat.md
+*-chat-export.md
+*-export.md
+session-log.md
+
+# Antigravity / Gemini agent artifacts
+.gemini/
+.agents/
+.agent/
+_agents/
+_agent/
+AGENTS.md

@@ -1,0 +1,258 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-ppt.local/slide-spec-schema.json",
+  "title": "SlideSpec",
+  "description": "Unified spec for AI-generated slide decks. Drives both HTML rendering (SKILL) and Remotion video rendering.",
+  "type": "object",
+  "required": ["metadata", "slides"],
+  "additionalProperties": false,
+  "properties": {
+    "metadata": { "$ref": "#/$defs/Metadata" },
+    "slides":   {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/Slide" }
+    },
+    "actions": {
+      "type": "array",
+      "description": "Video action timeline. Only required when generating a Remotion video — omit for HTML-only decks.",
+      "items": { "$ref": "#/$defs/Action" }
+    }
+  },
+
+  "$defs": {
+
+    "Metadata": {
+      "type": "object",
+      "required": ["title", "language"],
+      "additionalProperties": false,
+      "properties": {
+        "title":      { "type": "string", "description": "Deck title" },
+        "subtitle":   { "type": "string" },
+        "author":     { "type": "string" },
+        "language":   { "type": "string", "enum": ["zh-TW", "zh-CN", "en"] },
+        "theme":      {
+          "type": "string",
+          "enum": ["sketch-notes", "minimal", "dark-pro", "data-viz"],
+          "default": "sketch-notes",
+          "description": "Visual theme. Maps to CSS :root token overrides."
+        },
+        "createdAt":  { "type": "string", "format": "date-time" },
+        "slideCount": { "type": "integer", "minimum": 1, "description": "Redundant with slides.length — used for quick validation." }
+      }
+    },
+
+    "Slide": {
+      "type": "object",
+      "required": ["id", "layout", "title"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^slide-\\d+$",
+          "description": "Stable ID, e.g. 'slide-0'. Actions reference slides by index, but this ID is useful for debugging and HTML id attributes."
+        },
+        "layout": {
+          "type": "string",
+          "enum": ["cover", "content", "grid", "quote", "takeaway"],
+          "description": "Layout template. cover=title slide, content=single-idea, grid=card grid, quote=large quote, takeaway=conclusions."
+        },
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "body": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/BodyBlock" },
+          "description": "Ordered content blocks rendered top-to-bottom within the slide."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Speaker notes / TTS script for this slide. Not rendered visually."
+        }
+      }
+    },
+
+    "BodyBlock": {
+      "type": "object",
+      "required": ["component"],
+      "additionalProperties": false,
+      "properties": {
+        "component": {
+          "type": "string",
+          "enum": [
+            "bubble",
+            "tool-card",
+            "insight-card",
+            "decision-tree",
+            "emphasis-box",
+            "compare-table",
+            "text",
+            "image"
+          ],
+          "description": "Visual component type. Maps to CSS class in HTML mode and React component in Remotion mode."
+        },
+        "elementId": {
+          "type": "string",
+          "description": "Stable element ID for action targeting (spotlight, zoom). Convention: '{component}_{slide#}_{index}', e.g. 'bubble_0_1'."
+        },
+        "props": { "$ref": "#/$defs/ComponentProps" }
+      }
+    },
+
+    "ComponentProps": {
+      "type": "object",
+      "description": "Component-specific data. Shape depends on the parent component type.",
+      "properties": {
+        "text":     { "type": "string", "description": "Primary text content (bubble, emphasis-box, text)." },
+        "items": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/CardItem" },
+          "description": "Array of cards (tool-card, insight-card)."
+        },
+        "question": { "type": "string", "description": "Root question (decision-tree)." },
+        "branches": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Branch" },
+          "description": "Decision branches (decision-tree)."
+        },
+        "columns": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Column headers (compare-table)."
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "description": "Table rows, each row is an array of cell strings (compare-table)."
+        },
+        "src":      { "type": "string", "description": "Image source URL or path (image)." },
+        "alt":      { "type": "string", "description": "Alt text (image)." },
+        "caption":  { "type": "string", "description": "Caption text (image)." }
+      },
+      "additionalProperties": false
+    },
+
+    "CardItem": {
+      "type": "object",
+      "required": ["title"],
+      "additionalProperties": false,
+      "properties": {
+        "icon":        { "type": "string", "description": "Emoji or icon character." },
+        "tag":         { "type": "string", "description": "Category label." },
+        "title":       { "type": "string" },
+        "subtitle":    { "type": "string", "description": "Secondary title, e.g. Chinese name." },
+        "description": { "type": "string" },
+        "number":      { "type": "string", "description": "Large background number for insight-card, e.g. '01'." }
+      }
+    },
+
+    "Branch": {
+      "type": "object",
+      "required": ["label", "answer"],
+      "additionalProperties": false,
+      "properties": {
+        "label":  { "type": "string", "description": "Branch option label." },
+        "answer": { "type": "string", "description": "Branch answer / outcome." }
+      }
+    },
+
+    "Action": {
+      "type": "object",
+      "required": ["type"],
+      "description": "A single action on the video timeline. All time values are in seconds.",
+      "oneOf": [
+        { "$ref": "#/$defs/AdvanceSlideAction" },
+        { "$ref": "#/$defs/SubtitleAction" },
+        { "$ref": "#/$defs/WbWriteAction" },
+        { "$ref": "#/$defs/WbClearAction" },
+        { "$ref": "#/$defs/SpotlightAction" },
+        { "$ref": "#/$defs/TransitionAction" },
+        { "$ref": "#/$defs/ZoomAction" }
+      ]
+    },
+
+    "AdvanceSlideAction": {
+      "type": "object",
+      "required": ["type", "slideIdx", "startTime"],
+      "additionalProperties": false,
+      "properties": {
+        "type":      { "const": "advance_slide" },
+        "slideIdx":  { "type": "integer", "minimum": 0, "description": "0-indexed slide to switch to." },
+        "startTime": { "type": "number", "minimum": 0, "description": "Seconds from video start." }
+      }
+    },
+
+    "SubtitleAction": {
+      "type": "object",
+      "required": ["type", "text", "startTime", "duration"],
+      "additionalProperties": false,
+      "properties": {
+        "type":      { "const": "subtitle" },
+        "text":      { "type": "string", "minLength": 1 },
+        "startTime": { "type": "number", "minimum": 0 },
+        "duration":  { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+
+    "WbWriteAction": {
+      "type": "object",
+      "required": ["type", "text", "startTime", "duration"],
+      "additionalProperties": false,
+      "properties": {
+        "type":      { "const": "wb_write" },
+        "text":      { "type": "string", "minLength": 1, "description": "Text drawn on the whiteboard overlay." },
+        "startTime": { "type": "number", "minimum": 0 },
+        "duration":  { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+
+    "WbClearAction": {
+      "type": "object",
+      "required": ["type", "startTime"],
+      "additionalProperties": false,
+      "properties": {
+        "type":      { "const": "wb_clear" },
+        "startTime": { "type": "number", "minimum": 0 }
+      }
+    },
+
+    "SpotlightAction": {
+      "type": "object",
+      "required": ["type", "elementLabel", "startTime", "duration"],
+      "additionalProperties": false,
+      "properties": {
+        "type":         { "const": "spotlight" },
+        "elementLabel": { "type": "string", "minLength": 1, "description": "Label shown in spotlight banner, or elementId referencing a body block." },
+        "startTime":    { "type": "number", "minimum": 0 },
+        "duration":     { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+
+    "TransitionAction": {
+      "type": "object",
+      "required": ["type", "style", "startTime", "duration"],
+      "additionalProperties": false,
+      "properties": {
+        "type":      { "const": "transition" },
+        "style":     { "type": "string", "enum": ["fade", "slide-left", "slide-up"] },
+        "startTime": { "type": "number", "minimum": 0 },
+        "duration":  { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+
+    "ZoomAction": {
+      "type": "object",
+      "required": ["type", "target", "scale", "startTime", "duration"],
+      "additionalProperties": false,
+      "properties": {
+        "type":      { "const": "zoom" },
+        "target":    { "type": "string", "description": "elementId or elementLabel to zoom into." },
+        "scale":     { "type": "number", "exclusiveMinimum": 1, "maximum": 3, "description": "Zoom scale factor (1.2–3)." },
+        "startTime": { "type": "number", "minimum": 0 },
+        "duration":  { "type": "number", "exclusiveMinimum": 0 }
+      }
+    }
+  }
+}
