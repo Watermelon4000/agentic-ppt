@@ -188,8 +188,14 @@ export const TtsPPTVideo: React.FC<TtsPPTProps> = ({
   const t = frame / fps;
   const totalDuration = durationInFrames / fps;
 
-  // ── Current segment ──────────────────────────────────────
-  const currentSegment = [...segments].reverse().find((s: TtsSegment) => t >= s.startTime);
+  // ── Current segment (perf: avoid [...].reverse().find() every frame) ──
+  let currentSegment: TtsSegment | undefined;
+  for (let i = segments.length - 1; i >= 0; i--) {
+    if (t >= (segments[i] as TtsSegment).startTime) {
+      currentSegment = segments[i] as TtsSegment;
+      break;
+    }
+  }
 
 
   const slideIdx = currentSegment?.slideIdx ?? 0;

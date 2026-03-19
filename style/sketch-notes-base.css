@@ -130,9 +130,9 @@ p, li { font-size: clamp(14px, 1.6vw, 20px); color: var(--ink); line-height: 1.7
 }
 .tool-card:hover { transform: translate(-2px, -2px); box-shadow: 7px 7px 0 var(--ink); }
 .tool-card .icon { font-size: 40px; margin-bottom: 8px; filter: grayscale(1); }
-.tool-card h3 { font-family: 'Permanent Marker', sans-serif; font-size: 20px; margin-bottom: 4px; color: var(--ink); }
-.tool-card .cn-name { font-family: 'Noto Sans SC', sans-serif; font-weight: 700; font-size: 14px; color: var(--grey); margin-bottom: 8px; }
-.tool-card p { font-size: 14px; line-height: 1.6; }
+.tool-card h3 { font-family: 'Permanent Marker', sans-serif; font-size: clamp(16px, 2vw, 22px); margin-bottom: 4px; color: var(--ink); }
+.tool-card .cn-name { font-family: 'Noto Sans SC', sans-serif; font-weight: 700; font-size: clamp(12px, 1.4vw, 16px); color: var(--grey); margin-bottom: 8px; }
+.tool-card p { font-size: clamp(12px, 1.4vw, 16px); line-height: 1.6; }
 /* speed lines corner */
 .tool-card::before {
   content: ''; position: absolute; top: 0; right: 0; width: 50px; height: 50px; opacity: .5;
@@ -148,7 +148,7 @@ p, li { font-size: clamp(14px, 1.6vw, 20px); color: var(--ink); line-height: 1.7
   gap: 20px; width: 100%; max-width: 1100px; position: relative; z-index: 2;
 }
 .insight-card { background: #fff; border: 2px solid var(--ink); padding: 20px; position: relative; box-shadow: 4px 4px 0 var(--ink); }
-.insight-card .num { font-family: 'Permanent Marker', sans-serif; font-size: 44px; color: var(--light-grey); position: absolute; top: 8px; right: 16px; opacity: .4; }
+.insight-card .num { font-family: 'Permanent Marker', sans-serif; font-size: clamp(32px, 4vw, 48px); color: var(--light-grey); position: absolute; top: 8px; right: 16px; opacity: .4; }
 .insight-card h3 { font-weight: 900; font-size: clamp(14px, 1.6vw, 18px); margin-bottom: 8px; padding-right: 40px; }
 .insight-card p { font-size: clamp(13px, 1.3vw, 15px); color: #444; }
 
@@ -192,9 +192,9 @@ p, li { font-size: clamp(14px, 1.6vw, 20px); color: var(--ink); line-height: 1.7
 /* ─── Combo / Workflow cards ─────────────────────────── */
 .combo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; width: 100%; max-width: 1100px; position: relative; z-index: 2; }
 .combo-card { background: #fff; border: 2.5px solid var(--ink); padding: 18px 20px; box-shadow: 4px 4px 0 var(--ink); }
-.combo-card h3 { font-size: 17px; font-weight: 900; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
-.combo-card .tools-list { font-family: 'Permanent Marker', sans-serif; font-size: 14px; color: var(--grey); margin-bottom: 8px; }
-.combo-card p { font-size: 14px; }
+.combo-card h3 { font-size: clamp(14px, 1.7vw, 19px); font-weight: 900; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+.combo-card .tools-list { font-family: 'Permanent Marker', sans-serif; font-size: clamp(12px, 1.4vw, 16px); color: var(--grey); margin-bottom: 8px; }
+.combo-card p { font-size: clamp(12px, 1.4vw, 16px); }
 
 /* ─── Twinkle / manga star ───────────────────────────── */
 .manga-star { display: inline-block; font-size: 28px; animation: twinkle 2s ease-in-out infinite; }

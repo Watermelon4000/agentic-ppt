@@ -448,16 +448,21 @@ let undoStack = [];  // { slideIndex, html }
 let redoStack = [];
 let _snapshotBefore = null;  // temp: pre-action snapshot
 
+// Helper: remove all editor chrome from a DOM tree (select-ring, hints, handles, etc)
+function removeEditorChrome(root) {
+  root.querySelectorAll('.select-ring, .edit-hint, .resize-handle').forEach(e => e.remove());
+  root.querySelectorAll('[contenteditable]').forEach(e => e.removeAttribute('contenteditable'));
+  root.querySelectorAll('.editable-element').forEach(e => {
+    e.classList.remove('editable-element', 'selected');
+    delete e.dataset.wrapped;
+  });
+}
+
 function getCleanHTML() {
   // Get slide-stage innerHTML with editor chrome removed
   const stage = document.getElementById('slide-stage');
   const clone = stage.cloneNode(true);
-  clone.querySelectorAll('.select-ring, .edit-hint, .resize-handle').forEach(e => e.remove());
-  clone.querySelectorAll('[contenteditable]').forEach(e => e.removeAttribute('contenteditable'));
-  clone.querySelectorAll('.editable-element').forEach(e => {
-    e.classList.remove('editable-element', 'selected');
-    delete e.dataset.wrapped;
-  });
+  removeEditorChrome(clone);
   return clone.innerHTML;
 }
 
@@ -550,6 +555,16 @@ function parseAndRender(html, filename) {
   // Parse the HTML string in a temp div
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
+
+  // ── XSS sanitization: strip dangerous elements and attributes ──
+  doc.querySelectorAll('script, iframe, object, embed, link[rel="import"]').forEach(e => e.remove());
+  doc.querySelectorAll('*').forEach(el => {
+    for (const attr of [...el.attributes]) {
+      if (attr.name.startsWith('on') || (attr.name === 'href' && attr.value.trim().toLowerCase().startsWith('javascript:'))) {
+        el.removeAttribute(attr.name);
+      }
+    }
+  });
 
   // Extract <style> tags and inject into our page
   const styles = doc.querySelectorAll('style');
@@ -904,9 +919,15 @@ function deleteSelected() {
 // ─── RGB → Hex helper ────────────────────────────────────
 function rgbToHex(rgb) {
   if (!rgb || rgb === 'transparent') return '#f5f0e8';
-  const m = rgb.match(/\d+/g);
+  const m = rgb.match(/[\d.]+/g);
   if (!m || m.length < 3) return '#f5f0e8';
-  return '#' + m.slice(0,3).map(n => parseInt(n).toString(16).padStart(2,'0')).join('');
+  // Support rgba: convert alpha (0-1) to hex (00-ff)
+  let hex = '#' + m.slice(0,3).map(n => parseInt(n).toString(16).padStart(2,'0')).join('');
+  if (m.length >= 4) {
+    const alpha = Math.round(parseFloat(m[3]) * 255);
+    hex += alpha.toString(16).padStart(2,'0');
+  }
+  return hex;
 }
 
 // ─── Save HTML ───────────────────────────────────────────
@@ -916,8 +937,7 @@ function saveHTML() {
 
   // Remove editor chrome (rings, handles, hints) before saving
   const clone = stage.cloneNode(true);
-  clone.querySelectorAll('.select-ring, .edit-hint, .resize-handle').forEach(e => e.remove());
-  clone.querySelectorAll('[contenteditable]').forEach(e => e.removeAttribute('contenteditable'));
+  removeEditorChrome(clone);
   clone.querySelectorAll('[data-wrapped]').forEach(e => { delete e.dataset.wrapped; });
 
   // Update the stored slide HTML
@@ -958,9 +978,9 @@ async function exportPNG() {
   const stage = document.getElementById('slide-stage');
   showToast('📸 Capturing screenshot...');
 
-  // Temporarily remove editor chrome
-  const rings = stage.querySelectorAll('.select-ring, .edit-hint, .resize-handle');
-  rings.forEach(r => r.style.display = 'none');
+  // Temporarily hide editor chrome
+  const editorChrome = stage.querySelectorAll('.select-ring, .edit-hint, .resize-handle');
+  editorChrome.forEach(r => r.style.display = 'none');
 
   try {
     const canvas = await html2canvas(stage, {
@@ -1010,8 +1030,11 @@ async function exportPDF() {
     // Show slide
     showSlide(i);
 
-    // Wait a tick for render
-    await new Promise(r => setTimeout(r, 100));
+    // Disable transitions for clean capture, then wait for render
+    const slideEl = stage.querySelector('.slide');
+    if (slideEl) slideEl.style.transition = 'none';
+    await new Promise(r => setTimeout(r, 600));
+    if (slideEl) slideEl.style.transition = '';
 
     try {
       const canvas = await html2canvas(stage, {
